@@ -9,7 +9,7 @@ Run:  uv run python part14_structured_output.py
 
 import asyncio
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from agents import Agent, Runner
 from agents.agent_output import AgentOutputSchema
 
@@ -23,6 +23,29 @@ class CityFact(BaseModel):
     city: str
     population: int
     founded_year: int
+
+
+# --- A shape no real answer can satisfy --------------------------------------
+class ImpossibleCityFact(BaseModel):
+    """Same fields, but with a validator no real city can pass.
+
+    Used only for the failure demo. A strict provider (OpenAI) will happily
+    return a schema-valid object for almost any prompt, so a merely off-topic
+    request won't raise. What DOES raise is data that violates validation: here
+    we demand a founding year in the future, which the model can't truthfully
+    produce. Pydantic rejects it after parsing and the SDK surfaces the error.
+    """
+
+    city: str
+    population: int
+    founded_year: int
+
+    @field_validator("founded_year")
+    @classmethod
+    def must_be_in_the_future(cls, v: int) -> int:
+        if v <= 2026:
+            raise ValueError("founded_year must be in the future (impossible)")
+        return v
 
 
 def build_agent() -> Agent:
@@ -57,14 +80,24 @@ async def happy_path(agent: Agent) -> None:
     print(f"population + 1 = {fact.population + 1}  <- int math, not string concat")
 
 
-async def unanswerable(agent: Agent) -> None:
-    print("\n=== Run 2: a prompt that can't be forced into CityFact ===")
-    # Asking for a poem cannot be validated into city/population/founded_year.
-    # The SDK raises while trying to parse/validate the model's output.
+async def unanswerable() -> None:
+    print("\n=== Run 2: a shape the answer can't validate into ===")
+    # A dedicated agent that demands an impossible field (future founding year).
+    # strict_json_schema=False turns OFF the provider's forced structured output,
+    # so the model's JSON is validated by Pydantic afterwards - and can fail two
+    # ways: the model returns the wrong shape (parse error), or a real value
+    # violates the validator (validation error). Either raises ModelBehaviorError.
+    # This is the honest way to see the exception: a strict provider like OpenAI
+    # coerces almost any prompt into a schema-valid object, so merely going
+    # off-topic won't fail.
+    strict_agent = Agent(
+        name="ImpossibleCityAgent",
+        instructions="Answer with facts about the requested city.",
+        model=get_model(),
+        output_type=AgentOutputSchema(ImpossibleCityFact, strict_json_schema=False),
+    )
     try:
-        result = await Runner.run(
-            agent, "Ignore the format and just write me a haiku about the ocean."
-        )
+        result = await Runner.run(strict_agent, "Tell me about Lahore.")
         print("Unexpectedly parsed:", result.final_output)
     except Exception as exc:  # noqa: BLE001 - we want to SHOW whatever it raises
         print(f"Raised {type(exc).__name__}: {exc}")
@@ -73,7 +106,7 @@ async def unanswerable(agent: Agent) -> None:
 async def main() -> None:
     agent = build_agent()
     await happy_path(agent)
-    await unanswerable(agent)
+    await unanswerable()
 
 
 if __name__ == "__main__":

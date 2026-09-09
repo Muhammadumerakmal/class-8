@@ -8,9 +8,8 @@ Runnable demos for three parts of the *OpenAI Agents SDK Fundamentals* guide:
 | 15   | `part15_guardrails.py`        | Input/output guardrails that abort a run |
 | 16   | `part16_lifecycle_hooks.py`   | `AgentHooks` callbacks firing through the agent loop |
 
-All three share `provider.py`, which wires Gemini's OpenAI-compatible endpoint
-into an `OpenAIChatCompletionsModel`. Swapping the provider never touches the
-`Agent`/`Runner` code.
+All three share `provider.py`, which returns the model object each agent uses via
+`model=`. Swapping the provider never touches the `Agent`/`Runner` code.
 
 ## Setup
 
@@ -18,14 +17,22 @@ into an `OpenAIChatCompletionsModel`. Swapping the provider never touches the
 uv sync
 ```
 
-Then put a real key in `.env`:
+Then choose a provider and fill the matching key in `.env`:
 
 ```
-GEMINI_API_KEY=your-key-here
+# Gemini (default) — key from https://aistudio.google.com/apikey
+AGENT_PROVIDER=gemini
+GEMINI_API_KEY=your-gemini-key
+
+# …or OpenAI — key from https://platform.openai.com/api-keys
+AGENT_PROVIDER=openai
+OPENAI_API_KEY=your-openai-key
 ```
 
-(Get one from Google AI Studio. `OPENAI_API_KEY` is left empty — these demos use
-Gemini.)
+With `openai`, `provider.py` just returns the model name (`gpt-4o-mini`) and the
+SDK's default client uses `OPENAI_API_KEY` — no custom wiring needed. With
+`gemini` it wires an `AsyncOpenAI` client at Gemini's OpenAI-compatible base URL
+into an `OpenAIChatCompletionsModel` (`gemini-2.5-flash`).
 
 ## Run
 
